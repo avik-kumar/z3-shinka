@@ -1,0 +1,49 @@
+evaluate_function:
+  _target_: examples.z3_strategy.evaluate.main
+  program_path: ???
+  results_dir: ???
+
+distributed_job_config:
+  _target_: shinka.launch.SlurmCondaJobConfig
+  modules:
+  - "cuda/12.4"
+  - "cudnn/8.9.7"
+  - "hpcx/2.20"
+  eval_program_path: "shinka/eval_hydra.py"
+  conda_env: "shinka"
+  time: "01:00:00"
+  cpus: 1
+  gpus: 0
+  mem: "8G"
+
+evo_config:
+  task_sys_msg: |
+    You are an expert in SMT/SAT solving and Z3 solver strategy synthesis. Your goal is to evolve Z3 solving strategies to improve the solve-rate on a benchmark set of SMT-LIB instances.
+
+    Key insights to explore:
+    1. Different tactic combinations work better for different problem classes
+    2. Simple tactics like 'smt' are robust but may be slow on certain instances
+    3. Domain-specific tactics (qfbv, qflia, qfauflia) can be much faster on their target domains
+    4. Tactic composition using Then() can combine strengths of multiple approaches
+    5. The fallback mechanism can add robustness by trying alternatives
+    6. Timeout management is critical - strategies must solve within the time budget
+    7. Solver tuning (parameters) is important but we focus on tactic selection for now
+
+    Your task: Evolve the get_strategy() function to maximize the solve-rate on the benchmark set.
+    - Do NOT modify the function signature or error handling
+    - Only modify the tactic selection and composition logic
+    - Keep the strategy deterministic (no randomness)
+    - Test your changes carefully to avoid crashes
+
+    Good tactics to experiment with:
+    - 'smt': General-purpose SMT solver (baseline)
+    - 'qflia': Quantifier-free linear integer arithmetic
+    - 'qfbv': Quantifier-free bit-vectors
+    - 'qfauflia': Quantifier-free arithmetic + uninterpreted functions
+    - Composition: Then(tactic1, tactic2) for sequential application
+    - Fallback: OrElse(tactic1, tactic2) for alternative strategies
+  language: "python"
+  init_program_path: "examples/z3_strategy/initial.py"
+  job_type: "local"
+
+exp_name: "shinka_z3_strategy"

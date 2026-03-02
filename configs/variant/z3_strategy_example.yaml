@@ -1,0 +1,27 @@
+# Z3 Strategy Synthesis Example Variant
+# Usage: python -m shinka.launch_hydra "variant@_global_=z3_strategy_example"
+# Or: shinka_launch variant=z3_strategy_example
+
+defaults:
+  - override /database@_global_: island_small
+  - override /evolution@_global_: small_budget
+  - override /task@_global_: z3_strategy
+  - override /cluster@_global_: local
+  - _self_
+
+variant_suffix: "_z3_strategy_example"
+
+evo_config:
+  # Use OpenRouter free for code generation
+  llm_models:
+    - openrouter/free
+  
+  # Disable embeddings for simplicity
+  embedding_model: null
+  
+  # Small budget for quick testing
+  num_generations: 2
+  max_parallel_jobs: 1
+  
+  # Results directory
+  results_dir: null  # Will auto-generate timestamp-based directory
