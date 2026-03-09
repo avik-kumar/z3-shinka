@@ -6,10 +6,10 @@ from typing import Optional
 # Dataset/evaluation settings
 BENCHMARK_DIR = "tests/smt-tests"
 MAX_SMT_INSTANCES = 40
-INSTANCE_TIMEOUT_MS = 3000
+INSTANCE_TIMEOUT_MS = 5000
 
 # Evolution loop settings
-NUM_GENERATIONS = 10
+NUM_GENERATIONS = 20
 MAX_PARALLEL_JOBS = 4
 MAX_PATCH_ATTEMPTS = 8
 

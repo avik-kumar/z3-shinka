@@ -1,17 +1,21 @@
 # Z3 Strategy Evolution TODO
 
-- [ ] 1. Finalize implementation plan for robust evolution in `examples/z3_strategy`.
-  - Define exact changes for prompting, mutation structure, and novelty settings.
-  - Decide minimal safe defaults for smoke vs full runs.
+- [ ] 1. Enforce generation-level synchronization for parent/archive selection.
+  - Ensure parent selection for generation `g+1` starts only after all jobs in generation `g` finish.
+  - Verify island-level scheduling cannot sample incomplete generation state.
+  - Add clear logs proving generation barrier behavior.
 
-- [ ] 2. Fix repeated patch-attempt failures (`No changes applied` / missing diffs).
-  - Improve diff prompt anchors and patch formatting rules.
-  - Add diagnostics to capture why each failed patch was rejected.
+- [ ] 2. Explore WebUI/visualization and define how to leverage it.
+  - Validate current visualization flow against latest run artifacts.
+  - Identify views to track patch quality, island progression, and novelty/diversity.
+  - Document practical monitoring workflow for debugging stalled or low-quality runs.
 
-- [ ] 3. Add SEARCH-block verification that does not distract solver evolution.
-  - Validate SEARCH matches EVOLVE-BLOCK lines before apply.
-  - Keep verification lightweight and local so strategy search stays focused on solver quality.
+- [ ] 3. Improve LLM mutation reliability pipeline.
+  - Reduce out-of-editable-region patch attempts.
+  - Reduce `No changes applied` responses by strengthening patch anchors/format rules.
+  - Add handling/retry path for `LLM response content was None` with useful diagnostics.
 
-- [x] 4. Consolidate run configuration into one file.
-  - Centralize generations, LLM temperatures, timeout, max instances, patch attempts, and parallel jobs.
-  - Make `run_evo.py`, `evaluate.py`, and timeout settings read from the same config source.
+- [ ] 4. Evaluate stronger LLM models than `openrouter/free` for mutation quality.
+  - Shortlist candidate models for diff-style code editing reliability.
+  - Run small A/B smoke tests on patch validity + score movement.
+  - Choose a default model set and temperatures for stable evolution runs.

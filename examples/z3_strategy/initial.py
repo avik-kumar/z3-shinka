@@ -6,7 +6,18 @@ The EVOLVE-BLOCK contains the strategy selection logic that will be improved by 
 
 import z3
 import time
+import json
+import sys
+import argparse
+import subprocess
+import os
 from run_config import INSTANCE_TIMEOUT_MS
+
+
+def _remaining_ms(start_time: float, budget_ms: int) -> int:
+    """Return remaining wall-clock budget in milliseconds."""
+    elapsed_ms = int((time.perf_counter() - start_time) * 1000)
+    return max(0, budget_ms - elapsed_ms)
 
 
 def get_strategy():
@@ -143,7 +154,7 @@ def _build_strategy_tactic(ctx, timeout_ms):
     return tactic
 
 
-def solve_instance(instance_path, timeout_ms=INSTANCE_TIMEOUT_MS):
+def _solve_instance_internal(instance_path, timeout_ms=INSTANCE_TIMEOUT_MS):
     """
     Solve a single SMT-LIB instance using the evolved strategy.
     
@@ -163,49 +174,101 @@ def solve_instance(instance_path, timeout_ms=INSTANCE_TIMEOUT_MS):
         'error': None,
     }
     
+    start_total = time.perf_counter()
+
     try:
         # Read the SMT-LIB file
         with open(instance_path, 'r') as f:
             content = f.read()
+
+        if _remaining_ms(start_total, timeout_ms) <= 0:
+            stats['result'] = 'unknown'
+            stats['solved'] = False
+            stats['solve_time'] = time.perf_counter() - start_total
+            return stats
         
         # Create a context for parsing
         ctx = z3.Context()
         
         # Parse the SMT-LIB file - returns AstVector of assertions
         assertions = z3.parse_smt2_string(content, ctx=ctx)
+
+        if _remaining_ms(start_total, timeout_ms) <= 0:
+            stats['result'] = 'unknown'
+            stats['solved'] = False
+            stats['solve_time'] = time.perf_counter() - start_total
+            return stats
         
         strategy_cfg = get_strategy()
         mode = strategy_cfg.get("mode", "solver")
 
         if mode == "tactic":
-            tactic = _build_strategy_tactic(ctx, timeout_ms)
+            remaining_ms = _remaining_ms(start_total, timeout_ms)
+            if remaining_ms <= 0:
+                stats['result'] = 'unknown'
+                stats['solved'] = False
+                stats['solve_time'] = time.perf_counter() - start_total
+                return stats
+
+            tactic = _build_strategy_tactic(ctx, remaining_ms)
             goal = z3.Goal(ctx=ctx)
             for assertion in assertions:
                 goal.add(assertion)
-            bounded_tactic = z3.TryFor(tactic, timeout_ms)
+
+            remaining_ms = _remaining_ms(start_total, timeout_ms)
+            if remaining_ms <= 0:
+                stats['result'] = 'unknown'
+                stats['solved'] = False
+                stats['solve_time'] = time.perf_counter() - start_total
+                return stats
+
+            bounded_tactic = z3.TryFor(tactic, remaining_ms)
 
             try:
                 applied = bounded_tactic(goal)
                 s = z3.Solver(ctx=ctx)
-                s.set(timeout=timeout_ms)
+                remaining_ms = _remaining_ms(start_total, timeout_ms)
+                if remaining_ms <= 0:
+                    stats['result'] = 'unknown'
+                    stats['solved'] = False
+                    stats['solve_time'] = time.perf_counter() - start_total
+                    return stats
+                s.set(timeout=remaining_ms)
                 for subgoal in applied:
                     s.add(subgoal.as_expr())
             except Exception:
                 s = z3.Solver(ctx=ctx)
-                s.set(timeout=timeout_ms)
+                remaining_ms = _remaining_ms(start_total, timeout_ms)
+                if remaining_ms <= 0:
+                    stats['result'] = 'unknown'
+                    stats['solved'] = False
+                    stats['solve_time'] = time.perf_counter() - start_total
+                    return stats
+                s.set(timeout=remaining_ms)
                 for assertion in assertions:
                     s.add(assertion)
         else:
             s = z3.Solver(ctx=ctx)
-            s.set(timeout=timeout_ms)
+            remaining_ms = _remaining_ms(start_total, timeout_ms)
+            if remaining_ms <= 0:
+                stats['result'] = 'unknown'
+                stats['solved'] = False
+                stats['solve_time'] = time.perf_counter() - start_total
+                return stats
+            s.set(timeout=remaining_ms)
             for assertion in assertions:
                 s.add(assertion)
         
-        # Measure solve time
-        start = time.time()
+        remaining_ms = _remaining_ms(start_total, timeout_ms)
+        if remaining_ms <= 0:
+            stats['result'] = 'unknown'
+            stats['solved'] = False
+            stats['solve_time'] = time.perf_counter() - start_total
+            return stats
+        s.set(timeout=remaining_ms)
+
         result = s.check()
-        end = time.time()
-        stats['solve_time'] = end - start
+        stats['solve_time'] = time.perf_counter() - start_total
         
         # Interpret the solver result
         if result == z3.sat:
@@ -223,7 +286,80 @@ def solve_instance(instance_path, timeout_ms=INSTANCE_TIMEOUT_MS):
         stats['error'] = str(e)
         stats['result'] = 'error'
         stats['solved'] = False
+
+    if stats['solve_time'] == 0.0:
+        stats['solve_time'] = time.perf_counter() - start_total
     
+    return stats
+
+
+def solve_instance(instance_path, timeout_ms=INSTANCE_TIMEOUT_MS):
+    """Solve one instance with a strict wall-clock timeout budget."""
+    start = time.perf_counter()
+    cmd = [
+        sys.executable,
+        __file__,
+        "--_solve_instance",
+        "--instance_path",
+        instance_path,
+        "--timeout_ms",
+        str(timeout_ms),
+    ]
+
+    # Generated programs run from results/...; ensure shared config imports resolve.
+    env = os.environ.copy()
+    strategy_dir = os.path.abspath(os.path.join(os.getcwd(), "examples", "z3_strategy"))
+    existing_pythonpath = env.get("PYTHONPATH", "")
+    env["PYTHONPATH"] = (
+        strategy_dir
+        if not existing_pythonpath
+        else strategy_dir + os.pathsep + existing_pythonpath
+    )
+
+    try:
+        proc = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=timeout_ms / 1000.0,
+            env=env,
+        )
+    except subprocess.TimeoutExpired:
+        return {
+            'instance': instance_path,
+            'timeout_ms': timeout_ms,
+            'solve_time': time.perf_counter() - start,
+            'result': 'unknown',
+            'solved': False,
+            'error': None,
+        }
+
+    if proc.returncode != 0:
+        stderr_text = (proc.stderr or "").strip()
+        return {
+            'instance': instance_path,
+            'timeout_ms': timeout_ms,
+            'solve_time': time.perf_counter() - start,
+            'result': 'error',
+            'solved': False,
+            'error': stderr_text or f"Solver subprocess failed with code {proc.returncode}",
+        }
+
+    stdout_text = (proc.stdout or "").strip()
+    try:
+        stats = json.loads(stdout_text)
+    except json.JSONDecodeError:
+        return {
+            'instance': instance_path,
+            'timeout_ms': timeout_ms,
+            'solve_time': time.perf_counter() - start,
+            'result': 'error',
+            'solved': False,
+            'error': "Solver subprocess returned non-JSON output",
+        }
+
+    if stats.get('solve_time', 0.0) == 0.0:
+        stats['solve_time'] = time.perf_counter() - start
     return stats
 
 
@@ -245,3 +381,15 @@ def run_experiment(**kwargs):
         raise ValueError("instance_path must be provided")
     
     return solve_instance(instance_path, timeout_ms)
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(add_help=False)
+    parser.add_argument("--_solve_instance", action="store_true")
+    parser.add_argument("--instance_path", type=str)
+    parser.add_argument("--timeout_ms", type=int, default=INSTANCE_TIMEOUT_MS)
+    args, _ = parser.parse_known_args()
+
+    if args._solve_instance and args.instance_path:
+        result = _solve_instance_internal(args.instance_path, args.timeout_ms)
+        print(json.dumps(result), flush=True)
