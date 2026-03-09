@@ -8,6 +8,37 @@ import os
 logger = logging.getLogger(__name__)
 
 
+def _extract_openrouter_content(response):
+    """Best-effort extraction across OpenRouter provider response shapes."""
+    try:
+        message = response.choices[0].message
+    except Exception:
+        return ""
+
+    content = getattr(message, "content", None)
+    if isinstance(content, str):
+        return content
+
+    if isinstance(content, list):
+        chunks = []
+        for part in content:
+            if isinstance(part, dict):
+                text = part.get("text")
+                if isinstance(text, str):
+                    chunks.append(text)
+                    continue
+                nested = part.get("content")
+                if isinstance(nested, str):
+                    chunks.append(nested)
+                    continue
+            text_attr = getattr(part, "text", None)
+            if isinstance(text_attr, str):
+                chunks.append(text_attr)
+        return "\n".join(chunks)
+
+    return ""
+
+
 def backoff_handler(details):
     exc = details.get("exception")
     if exc:
@@ -49,7 +80,7 @@ def query_openrouter(
             messages=[{"role": "system", "content": system_msg}, *new_msg_history],
             **filtered_kwargs,
         )
-        content = response.choices[0].message.content
+        content = _extract_openrouter_content(response)
         new_msg_history.append({"role": "assistant", "content": content})
     else:
         response = client.chat.completions.create(

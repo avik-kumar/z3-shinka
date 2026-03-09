@@ -34,6 +34,10 @@ def get_strategy():
 
     use_tryfor = False
     tryfor_share = 0.5
+    fallback_policy = "or_else"
+    max_fallbacks = 3
+    force_terminal_smt = True
+    dedup_pipelines = True
     # EVOLVE-BLOCK-END
 
     return {
@@ -43,10 +47,21 @@ def get_strategy():
         "fallback_tactics": fallback_tactics,
         "use_tryfor": use_tryfor,
         "tryfor_share": tryfor_share,
+        "fallback_policy": fallback_policy,
+        "max_fallbacks": max_fallbacks,
+        "force_terminal_smt": force_terminal_smt,
+        "dedup_pipelines": dedup_pipelines,
     }
 
 
-def _build_pipeline_tactic(ctx, tactic_names, timeout_ms, use_tryfor, tryfor_share):
+def _build_pipeline_tactic(
+    ctx,
+    tactic_names,
+    timeout_ms,
+    use_tryfor,
+    tryfor_share,
+    force_terminal_smt=True,
+):
     """Build a sequential tactic pipeline with optional per-tactic TryFor wrapping."""
     if not tactic_names:
         return z3.Tactic("smt", ctx=ctx)
@@ -54,6 +69,10 @@ def _build_pipeline_tactic(ctx, tactic_names, timeout_ms, use_tryfor, tryfor_sha
     names = [name for name in tactic_names if isinstance(name, str) and name.strip()]
     if not names:
         return z3.Tactic("smt", ctx=ctx)
+
+    # Keep final solve stage present when using tactic mode.
+    if force_terminal_smt and names[-1] != "smt":
+        names = names + ["smt"]
 
     per_tactic_ms = max(1, int((timeout_ms * max(0.0, min(1.0, tryfor_share))) / len(names)))
 
@@ -75,16 +94,47 @@ def _build_strategy_tactic(ctx, timeout_ms):
     cfg = get_strategy()
 
     primary = cfg.get("primary_tactics", ["smt"])
-    fallback = cfg.get("fallback_tactics", [["smt"]])
+    fallback = list(cfg.get("fallback_tactics", [["smt"]]))
     use_tryfor = bool(cfg.get("use_tryfor", False))
     tryfor_share = float(cfg.get("tryfor_share", 0.6))
+    fallback_policy = str(cfg.get("fallback_policy", "or_else"))
+    max_fallbacks = max(0, int(cfg.get("max_fallbacks", 3)))
+    force_terminal_smt = bool(cfg.get("force_terminal_smt", True))
+    dedup_pipelines = bool(cfg.get("dedup_pipelines", True))
 
-    all_pipelines = [primary] + list(fallback)
+    fallback = fallback[:max_fallbacks]
+    all_pipelines = [primary] + fallback
+
+    if dedup_pipelines:
+        seen = set()
+        deduped = []
+        for pipeline in all_pipelines:
+            key = tuple(pipeline) if isinstance(pipeline, list) else tuple()
+            if key not in seen:
+                seen.add(key)
+                deduped.append(pipeline)
+        all_pipelines = deduped
+
+    if fallback_policy == "primary_only":
+        all_pipelines = [primary]
+
     tactic = None
     for pipeline in all_pipelines:
         try:
-            current = _build_pipeline_tactic(ctx, pipeline, timeout_ms, use_tryfor, tryfor_share)
-            tactic = current if tactic is None else z3.OrElse(tactic, current)
+            current = _build_pipeline_tactic(
+                ctx,
+                pipeline,
+                timeout_ms,
+                use_tryfor,
+                tryfor_share,
+                force_terminal_smt,
+            )
+            if tactic is None:
+                tactic = current
+            elif fallback_policy == "chain":
+                tactic = z3.Then(tactic, current)
+            else:
+                tactic = z3.OrElse(tactic, current)
         except Exception:
             continue
 
