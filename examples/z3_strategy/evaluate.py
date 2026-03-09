@@ -6,14 +6,12 @@ Computes metrics: solve-rate (primary), timing (secondary tiebreaker).
 
 import os
 import json
-import time
 import argparse
 from pathlib import Path
 from shinka.core import run_shinka_eval
-from timeout_config import INSTANCE_TIMEOUT_MS
+from run_config import BENCHMARK_DIR, INSTANCE_TIMEOUT_MS, MAX_SMT_INSTANCES
 
 
-BENCHMARK_DIR = "tests/smt-tests"
 TIMEOUT_MS = INSTANCE_TIMEOUT_MS
 
 
@@ -219,8 +217,8 @@ if __name__ == "__main__":
     parser.add_argument(
         "--max_instances",
         type=int,
-        default=100,
-        help="Max number of instances to test (default: 100)",
+        default=MAX_SMT_INSTANCES,
+        help=f"Max number of instances to test (default: {MAX_SMT_INSTANCES})",
     )
     parsed_args = parser.parse_args()
     metrics, correct, err = main(parsed_args.program_path, parsed_args.results_dir, max_instances=parsed_args.max_instances)

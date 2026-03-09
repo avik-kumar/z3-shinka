@@ -4,22 +4,34 @@ Usage:
     python examples/z3_strategy/run_evo.py
 """
 
-import os
 from shinka.core import EvolutionRunner, EvolutionConfig
 from shinka.database import DatabaseConfig
 from shinka.launch import LocalJobConfig
-from timeout_config import INSTANCE_TIMEOUT_MS
+from run_config import (
+    INSTANCE_TIMEOUT_MS,
+    NUM_GENERATIONS,
+    MAX_PARALLEL_JOBS,
+    MAX_PATCH_ATTEMPTS,
+    LLM_MODELS,
+    LLM_TEMPERATURES,
+    LLM_MAX_TOKENS,
+    EVAL_WALL_TIMEOUT,
+    apply_runtime_environment,
+)
 
 
 def main():
     """Run a quick local evolution test on Z3 strategy synthesis."""
-    
-    # Run on a larger benchmark subset
-    os.environ['MAX_SMT_INSTANCES'] = '40'
+
+    # Keep evaluator and runner instance limits in sync.
+    apply_runtime_environment()
     
     # Minimal job config for local execution
     # Point to evaluate.py in the same directory
-    job_config = LocalJobConfig(eval_program_path="examples/z3_strategy/evaluate.py")
+    job_config = LocalJobConfig(
+        eval_program_path="examples/z3_strategy/evaluate.py",
+        time=EVAL_WALL_TIMEOUT,
+    )
     
     # Small database for quick testing
     db_config = DatabaseConfig(
@@ -85,11 +97,11 @@ def main():
         language="python",
         init_program_path="examples/z3_strategy/initial.py",
         job_type="local",
-        num_generations=10,
-        max_parallel_jobs=4,
-        llm_models=["openrouter/free"],
-        llm_kwargs={"temperatures": [0.15, 0.25], "max_tokens": 4096},
-        max_patch_attempts=8,
+        num_generations=NUM_GENERATIONS,
+        max_parallel_jobs=MAX_PARALLEL_JOBS,
+        llm_models=LLM_MODELS,
+        llm_kwargs={"temperatures": LLM_TEMPERATURES, "max_tokens": LLM_MAX_TOKENS},
+        max_patch_attempts=MAX_PATCH_ATTEMPTS,
         embedding_model=None,
     )
     

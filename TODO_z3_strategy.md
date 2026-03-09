@@ -12,6 +12,6 @@
   - Validate SEARCH matches EVOLVE-BLOCK lines before apply.
   - Keep verification lightweight and local so strategy search stays focused on solver quality.
 
-- [ ] 4. Consolidate run configuration into one file.
+- [x] 4. Consolidate run configuration into one file.
   - Centralize generations, LLM temperatures, timeout, max instances, patch attempts, and parallel jobs.
   - Make `run_evo.py`, `evaluate.py`, and timeout settings read from the same config source.

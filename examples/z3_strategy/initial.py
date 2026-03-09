@@ -6,7 +6,7 @@ The EVOLVE-BLOCK contains the strategy selection logic that will be improved by 
 
 import z3
 import time
-from timeout_config import INSTANCE_TIMEOUT_MS
+from run_config import INSTANCE_TIMEOUT_MS
 
 
 def get_strategy():
